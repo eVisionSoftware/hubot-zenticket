@@ -21,50 +21,75 @@
 #   erikvanbrakel (https://github.com/erikvanbrakel)
 
 module.exports = (robot) ->
-        robot.respond /ticketme!/i, (msg) ->
-                room = msg.message.metadata.room
 
-                thread_id = msg.message.metadata.thread_id
+    flowdock = 
+        organization: process.env.HUBOT_FLOWDOCK_ORGANIZATION
+        api_token: process.env.HUBOT_FLOWDOCK_API_TOKEN
 
-                if not thread_id
-                        msg.send "Can't create a ticket without a thread, sorry man."
-                        return
+    zendesk = 
+        user: process.env.HUBOT_ZENDESK_USER
+        api_token: process.env.HUBOT_ZENDESK_TOKEN
+        subdomain: process.env.HUBOT_ZENDESK_SUBDOMAIN
 
-                if not room
-                        robot.logger.error "Can't ticket something in private messages"
-                        return
+    unless flowdock.organization?
+        robot.logger.error "hubot-zenticket included, but missing HUBOT_FLOWDOCK_ORGANIZATION"
+  
+    unless flowdock.api_token?
+        robot.logger.error "hubot-zenticket included, but missing HUBOT_FLOWDOCK_API_TOKEN"
 
-                flow = robot.adapter.flowFromParams({room: room})
+    unless zendesk.user?
+        robot.logger.error "hubot-zenticket included, but missing HUBOT_ZENDESK_USER"
 
-                if not flow
-                        robot.logger.error "Can't find a matching flow for #{room}"
-                        return
+    unless zendesk.api_token?
+        robot.logger.error "hubot-zenticket included, but missing HUBOT_ZENDESK_TOKEN"
 
-                msg.http("https://api.flowdock.com/flows/#{process.env.HUBOT_FLOWDOCK_ORGANIZATION}/#{flow.name.toLowerCase()}/threads/#{thread_id}/messages")
-                        .auth("#{process.env.HUBOT_FLOWDOCK_API_TOKEN}")
-                        .get() (err, messages, body) ->
-                                if err
-                                        robot.logger.error "Error querying messages: #{err}"
-                                        msg.send "Woops"
-                                        return
+    unless zendesk.subdomain?
+        robot.logger.error "hubot-zenticket included, but missing HUBOT_ZENDESK_SUBDOMAIN"
 
-                                msgs = JSON.parse(body)
+    robot.respond /ticketme!/i, (msg) ->
 
-                                ticketContents = ""
-                                for message in msgs
-                                        user = robot.brain.userForId(message.user)
-                                        ticketContents += "#{user.name}: \n#{message.content}\n"
+        room = msg.message.metadata.room
+        thread_id = msg.message.metadata.thread_id
 
-                                msg.send "Will create ticket with this: #{ticketContents}"
+        if not thread_id
+            msg.send "Can't create a ticket without a thread, sorry man."
+            return
 
-                                data = JSON.stringify({ ticket: { requester: "Hubot", subject: "Ticket from flowdock", comment: {body: ticketContents }}})
-                                msg.http("https://#{process.env.HUBOT_ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/tickets.json")
-                                        .auth("#{HUBOT_ZENDESK_USER}/token","#{HUBOT_ZENDESK_TOKEN}")
-                                        .header("Content-Type", "application/json")
-                                        .post(data) (err, resp, body) ->
-                                                if err
-                                                        robot.logger.error "Error creating ticket: #{err}"
-                                                        msg.send "Something went wrong."
-                                                        return
-                                                msg.send "Ticket created."
+        if not room
+            robot.logger.error "Can't ticket something in private messages"
+            return
+
+        flow = robot.adapter.flowFromParams({room: room})
+
+        if not flow
+            robot.logger.error "Can't find a matching flow for #{room}"
+            return
+
+        msg.http("https://api.flowdock.com/flows/#{process.env.HUBOT_FLOWDOCK_ORGANIZATION}/#{flow.name.toLowerCase()}/threads/#{thread_id}/messages")
+            .auth("#{process.env.HUBOT_FLOWDOCK_API_TOKEN}")
+            .get() (err, messages, body) ->
+                if err
+                    robot.logger.error "Error querying messages: #{err}"
+                    msg.send "Woops"
+                    return
+
+                msgs = JSON.parse(body)
+
+                ticketContents = ""
+                for message in msgs
+                    user = robot.brain.userForId(message.user)
+                    ticketContents += "#{user.name}: \n#{message.content}\n"
+
+                msg.send "Will create ticket with this: #{ticketContents}"
+
+                data = JSON.stringify({ ticket: { requester: "Hubot", subject: "Ticket from flowdock", comment: {body: ticketContents }}})
+                msg.http("https://#{process.env.HUBOT_ZENDESK_SUBDOMAIN}.zendesk.com/api/v2/tickets.json")
+                    .auth("#{HUBOT_ZENDESK_USER}/token","#{HUBOT_ZENDESK_TOKEN}")
+                    .header("Content-Type", "application/json")
+                    .post(data) (err, resp, body) ->
+                        if err
+                            robot.logger.error "Error creating ticket: #{err}"
+                            msg.send "Something went wrong."
+                            return
+                        msg.send "Ticket created."
 
